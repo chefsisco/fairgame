@@ -158,6 +158,7 @@ DEFAULT_MAX_WEIRD_PAGE_DELAY = 5
 DEFAULT_PAGE_WAIT_DELAY = 0.5  # also serves as minimum wait for randomized delays
 DEFAULT_MAX_PAGE_WAIT_DELAY = 1.0  # used for random page wait delay
 MAX_CHECKOUT_BUTTON_WAIT = 3  # integers only
+DEFAULT_SPEED_PAGE_WAIT_DELAY = 3
 
 
 class Amazon:
@@ -171,6 +172,7 @@ class Amazon:
         used=False,
         single_shot=False,
         no_screenshots=False,
+        speed=False,
     ):
         self.notification_handler = notification_handler
         self.asin_list = []
@@ -182,6 +184,9 @@ class Amazon:
         self.used = used
         self.single_shot = single_shot
         self.no_screenshots = no_screenshots
+        self.speed = speed
+        self.start_time = time.time()
+        self.start_time_atc = 0
 
         if not self.no_screenshots:
             if not os.path.exists("screenshots"):
@@ -236,7 +241,7 @@ class Amazon:
         # if os.path.isdir(profile_amz):
         #     os.remove(profile_amz)
         options.add_argument(f"user-data-dir=.profile-amz")
-        # options.page_load_strategy = "eager"
+        options.set_capability("pageLoadStrategy", "eager")
 
         try:
             self.driver = webdriver.Chrome(executable_path=binary_path, options=options)
@@ -286,7 +291,7 @@ class Amazon:
             while self.try_to_checkout:
                 self.navigate_pages(test)
                 # if successful after running navigate pages, remove the asin_list from the list
-                if not self.try_to_checkout:
+                if not self.try_to_checkout and not self.single_shot:
                     self.remove_asin_list(asin)
                 # checkout loop limiters
                 elif self.checkout_retry > DEFAULT_MAX_PTC_TRIES:
@@ -301,6 +306,8 @@ class Amazon:
             # if no items left it list, let loop end
             if not self.asin_list:
                 keep_going = False
+        runtime = time.time() - self.start_time
+        log.info(f"FairGame bot ran for {runtime} seconds")
 
     @debug
     def handle_startup(self):
@@ -447,8 +454,12 @@ class Amazon:
                     buy_update()
                 except:
                     pass
+                title = self.driver.title
                 elements[i].click()
-                time.sleep(self.page_wait_delay())
+                if not self.speed:
+                    time.sleep(self.page_wait_delay())
+                else:
+                    self.speed_wait_for_page_change(previous_page_title=title)
                 if self.driver.title in SHOPING_CART_TITLES:
                     return True
                 else:
@@ -477,7 +488,8 @@ class Amazon:
     @debug
     def navigate_pages(self, test):
         # delay to wait for page load
-        time.sleep(self.page_wait_delay())
+        if not self.speed:
+            time.sleep(self.page_wait_delay())
 
         title = self.driver.title
         if title in SIGN_IN_TITLES:
@@ -538,7 +550,7 @@ class Amazon:
                             )
                         else:
                             self.save_screenshot("prime-signup-error")
-
+        title = self.driver.title
         if button:
             button.click()
         else:
@@ -546,6 +558,8 @@ class Amazon:
                 "Prime offer page popped up, user intervention required"
             )
             time.sleep(DEFAULT_MAX_WEIRD_PAGE_DELAY)
+        if self.speed:
+            self.speed_wait_for_page_change(previous_page_title=title)
 
     @debug
     def handle_home_page(self):
@@ -555,8 +569,11 @@ class Amazon:
             button = self.driver.find_element_by_xpath('//*[@id="nav-cart"]')
         except exceptions.NoSuchElementException:
             log.info("Could not find cart button")
+        title = self.driver.title
         if button:
             button.click()
+        if self.speed:
+            self.speed_wait_for_page_change(previous_page_title=title)
         else:
             self.notification_handler.send_notification(
                 "Could not click cart button, user intervention required"
@@ -565,12 +582,18 @@ class Amazon:
 
     @debug
     def handle_cart(self):
+        self.start_time_atc = time.time()
+        title = self.driver.title
         log.info("clicking checkout.")
         try:
+            log.info("checking button 1")
             self.driver.find_element_by_xpath('//*[@id="hlb-ptc-btn-native"]').click()
+            log.info("clicked button 1")
         except exceptions.NoSuchElementException:
             try:
+                log.info("checking button 2")
                 self.driver.find_element_by_xpath('//*[@id="hlb-ptc-btn"]').click()
+                log.info("clicked button 2")
             except exceptions.NoSuchElementException:
                 log.error("couldn't find buttons to proceed to checkout")
                 self.save_page_source("ptc-error")
@@ -581,9 +604,14 @@ class Amazon:
                 log.info("Refreshing page to try again")
                 self.driver.refresh()
                 self.checkout_retry += 1
+        log.info("waiting for page change")
+        if self.speed:
+            self.speed_wait_for_page_change(previous_page_title=title)
+        log.info("page change complete")
 
     @debug
     def handle_checkout(self, test):
+        log.info("entered pyo")
         previous_title = self.driver.title
         button = None
         i = 0
@@ -607,10 +635,17 @@ class Amazon:
                     j = 0
                     while (
                         self.driver.title == previous_title
-                        or j < MAX_CHECKOUT_BUTTON_WAIT
+                        and j < MAX_CHECKOUT_BUTTON_WAIT
                     ):
-                        time.sleep(self.page_wait_delay())
-                        j += 1
+                        if not self.speed:
+                            time.sleep(self.page_wait_delay())
+                            j += 1
+                        else:
+                            self.speed_wait_for_page_change(
+                                previous_page_title=previous_title
+                            )
+                            j = MAX_CHECKOUT_BUTTON_WAIT
+
                     if self.driver.title != previous_title:
                         break
                     else:
@@ -619,8 +654,9 @@ class Amazon:
                         )
                 else:
                     log.info(f"Found button {button.text}, but this is a test")
-                    "will not try to complete order"
+                    log.info("will not try to complete order")
                     self.try_to_checkout = False
+                    break
             self.button_xpaths.append(self.button_xpaths.pop(0))
         if not test and self.driver.title == previous_title:
             # Could not click button, refresh page and try again
@@ -634,6 +670,8 @@ class Amazon:
                 self.save_screenshot("ptc-error")
             log.info("Refreshing page to try again")
             self.driver.refresh()
+            if self.speed:
+                time.sleep(self.page_wait_delay())
             self.order_retry += 1
 
     @debug
@@ -644,9 +682,8 @@ class Amazon:
         else:
             self.save_screenshot("order-placed")
         if self.single_shot:
-            exit(0)
-        else:
-            self.try_to_checkout = False
+            self.asin_list = []
+        self.try_to_checkout = False
 
     @debug
     def handle_doggos(self):
@@ -720,6 +757,15 @@ class Amazon:
             return random.uniform(DEFAULT_PAGE_WAIT_DELAY, DEFAULT_MAX_PAGE_WAIT_DELAY)
         else:
             return DEFAULT_PAGE_WAIT_DELAY
+
+    @debug
+    def speed_wait_for_page_change(
+        self, previous_page_title, max_time_delay=DEFAULT_SPEED_PAGE_WAIT_DELAY
+    ):
+        max_wait = time.time() + max_time_delay
+        while time.time() < max_wait and self.driver.title == previous_page_title:
+            pass
+        return self.driver.title != previous_page_title
 
 
 def get_timestamp_filename(name, extension):

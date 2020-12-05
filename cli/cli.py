@@ -100,6 +100,11 @@ def main():
     is_flag=True,
     help="Take NO screenshots, do not bother asking for help if you use this... Screenshots are the best tool we have for troubleshooting",
 )
+@click.option(
+    "--speed",
+    is_flag=True,
+    help="speed through checkout (hopefully? don't blame us if you get CAPTCHA or dogs)",
+)
 @notify_on_crash
 def amazon(
     no_image,
@@ -112,6 +117,7 @@ def amazon(
     random_delay,
     single_shot,
     no_screenshots,
+    speed,
 ):
     if no_image:
         selenium_utils.no_amazon_image()
@@ -127,6 +133,7 @@ def amazon(
         used=used,
         single_shot=single_shot,
         no_screenshots=no_screenshots,
+        speed=speed,
     )
     amzn_obj.run(delay=delay, test=test)
 
