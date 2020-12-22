@@ -7,7 +7,7 @@ import stdiomask
 from Crypto.Cipher import ChaCha20_Poly1305
 from Crypto.Protocol.KDF import scrypt
 from Crypto.Random import get_random_bytes
-from keyring.errors import PasswordDeleteError
+from keyring.errors import PasswordDeleteError, NoKeyringError
 
 from utils.logger import log
 
@@ -59,11 +59,17 @@ def create_encrypted_config(data, file_path):
         # Clear any previous key:
         try:
             keyring.delete_password(KEYRING_SERVICE_NAME, getpass.getuser())
+            # Store the password in the system keyring service
+            keyring.set_password(KEYRING_SERVICE_NAME, getpass.getuser(), cpass)
         except PasswordDeleteError:
             # Assume the password didn't exist?
             pass
-        # Store the password in the system keyring service
-        keyring.set_password(KEYRING_SERVICE_NAME, getpass.getuser(), cpass)
+        except NoKeyringError as e:
+            # System doesn't support keyring
+            log.warning(
+                "No Keyring system was found.  Reverting to console input.  See "
+                "https://github.com/jaraco/keyring for solutions on this platform."
+            )
         result = encrypt(payload, cpass)
         with open(file_path, "w") as f:
             f.write(result)
@@ -81,8 +87,13 @@ def load_encrypted_config(config_path):
         data = json_file.read()
     try:
         if "nonce" in data:
-            # Retrieve the password from the system keyring service
-            password = keyring.get_password(KEYRING_SERVICE_NAME, getpass.getuser())
+            password = None
+            try:
+                # Retrieve the password from the system keyring service
+                password = keyring.get_password(KEYRING_SERVICE_NAME, getpass.getuser())
+            except NoKeyringError:
+                # Ignore this error since we dealt with it at encryption time and revert to console
+                pass
             if not password:
                 # legacy mode for people who upgrade without recreating the file
                 password = stdiomask.getpass(
