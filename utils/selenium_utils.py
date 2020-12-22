@@ -15,6 +15,7 @@ options.add_experimental_option("useAutomationExtension", False)
 # CHROME ONLY option to prevent Restore Session popup
 options.add_argument("--disable-session-crashed-bubble")
 
+
 class AnyEc:
     """Use with WebDriverWait to combine expected_conditions
     in an OR.

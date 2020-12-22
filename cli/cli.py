@@ -1,23 +1,20 @@
+import os
 from datetime import datetime
 from functools import wraps
 from signal import signal, SIGINT
 
 import click
 import time
+from utils.version import check_version
 
 from notifications.notifications import NotificationHandler, TIME_FORMAT
 from stores.amazon import Amazon
 from stores.bestbuy import BestBuyHandler
 from utils import selenium_utils
 from utils.logger import log
-from utils.version import check_version
 
+check_version()
 notification_handler = NotificationHandler()
-
-try:
-    check_version()
-except Exception as e:
-    log.error(e)
 
 
 def handler(signal, frame):
