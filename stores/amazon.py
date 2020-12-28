@@ -494,7 +494,7 @@ class Amazon:
             try:
                 log.info("Stuck on a captcha... Lets try to solve it.")
                 captcha = AmazonCaptcha.fromdriver(self.driver)
-                solution = captcha.solve()
+                solution = captcha.solve(keep_logs=True)
                 log.info(f"The solution is: {solution}")
                 if solution == "Not solved":
                     log.info(
