@@ -2,4 +2,6 @@ from cli import cli
 
 
 if __name__ == "__main__":
-    cli.main()
+    print("why are you running random branches?")
+    exit(0)
+    #cli.main()
