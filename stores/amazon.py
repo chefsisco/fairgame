@@ -553,6 +553,20 @@ class Amazon:
                     offer_count = self.driver.find_elements_by_xpath(
                         "//div[@id='aod-pinned-offer' or @id='aod-offer']//input[@name='submit.addToCart']"
                     )
+                    # Some products urls load 'combo' pages that have multiple items from a collection.  Regardless
+                    # of ASIN in the URL, the page will load a seemingly 'default' product if the requested ASIN is
+                    # not in stock.  This check ensures that the flyout contains offers for the requested ASIN
+                    # and not some surrogate ASIN that was put in front of the bot as a placeholder.
+                    # Examples: PS5 ASIN https://www.amazon.es/dp/B08KJF2D25/#aod
+                    validation_count = self.driver.find_elements_by_xpath(
+                        f"//div[@id='aod-pinned-offer' or @id='aod-offer']//input[starts-with(@name, 'metric-asin.{asin}')]"
+                    )
+                    if len(offer_count) != len(validation_count):
+                        log.info(
+                            f"Offers don't correspond to the ASIN {asin}.  Out of stock combo item? Skipping"
+                        )
+                        return False
+
                 elif offers.get_attribute("data-action") == "show-all-offers-display":
                     # PDP Page
                     # Find the offers link first, just to burn some cycles in case the flyout is loading
